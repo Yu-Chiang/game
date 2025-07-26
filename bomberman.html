@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>多米諾骨牌（Dominoes 人機對戰）</title>
+<style>
+body { background:#252525; }
+#main { width:880px; margin:36px auto; background:#ffeebb; border-radius:15px; box-shadow:0 6px 30px #000a; padding:16px 0 40px 0;}
+h2 { text-align:center; color:#5c3c14; }
+#chain, #hand, #aihand { display:flex; flex-wrap:wrap; margin:18px 20px 14px 20px;}
+.dom { font-family:monospace; font-size:32px; background:#fff; color:#444;
+  border:2px solid #ca9944; border-radius:8px; margin:2px 6px; padding:6px 12px; cursor:pointer;
+  transition:box-shadow .2s;}
+.dom:hover { box-shadow:0 0 16px #ffdf84;}
+#draw { margin:8px 16px; font-size:20px; }
+#info { margin:8px 20px; font-size:20px; color:#903;}
+#aihand .dom { background:#eee; color:#eee; border-color:#999; cursor:default;}
+#result { font-size:26px; text-align:center; color:#c60; margin:18px;}
+</style>
+</head>
+<body>
+<div id="main">
+<h2>多米諾骨牌（人機對戰）</h2>
+<div id="info"></div>
+<div id="chain"></div>
+<div style="margin:6px 20px 2px 20px;color:#277;font-size:19px;">
+你的手牌：
+</div>
+<div id="hand"></div>
+<button id="draw">抽牌</button>
+<div style="margin:6px 20px 2px 20px;color:#855;font-size:19px;">
+AI 手牌數：<span id="aiCount"></span>
+</div>
+<div id="aihand"></div>
+<div id="result"></div>
+</div>
+<script>
+function makeDominoSet(n=6){
+  let s=[];
+  for(let i=0;i<=n;i++)for(let j=i;j<=n;j++)s.push([i,j]);
+  return s;
+}
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    let j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+let stock=shuffle(makeDominoSet());
+let player=stock.splice(0,7);
+let ai=stock.splice(0,7);
+let chain=[player.find(x=>x[0]===6&&x[1]===6)||ai.find(x=>x[0]===6&&x[1]===6)||player[0]];
+if(player.findIndex(x=>x===chain[0])>=0) player.splice(player.findIndex(x=>x===chain[0]),1);
+else ai.splice(ai.findIndex(x=>x===chain[0]),1);
+let turn = Math.random()<0.5 ? 'player' : 'ai';
+let result = '';
+
+function update(){
+  document.getElementById('chain').innerHTML = chain.map(d=>`<div class="dom">${d[0]}|${d[1]}</div>`).join('');
+  document.getElementById('hand').innerHTML = player.map((d,i)=>`<div class="dom" onclick="play(${i})">${d[0]}|${d[1]}</div>`).join('');
+  document.getElementById('aiCount').textContent = ai.length;
+  document.getElementById('aihand').innerHTML = ai.map(()=>`<div class="dom">##|##</div>`).join('');
+  document.getElementById('info').innerHTML = turn==='player' ? '你的回合，請點選能出的骨牌或抽牌。' : 'AI思考中...';
+  document.getElementById('result').innerHTML = result;
+  document.getElementById('draw').disabled = turn!=='player'||!!result||!canDraw();
+}
+update();
+
+function canDraw(){
+  return !player.some(canPlay) && stock.length>0 && !result;
+}
+function canPlay(card){
+  let l=chain[0][0], r=chain[chain.length-1][1];
+  return card[0]===l||card[1]===l||card[0]===r||card[1]===r;
+}
+window.play=function(i){
+  if(turn!=='player'||result) return;
+  let card=player[i], l=chain[0][0], r=chain[chain.length-1][1];
+  if(card[0]===l||card[1]===l){
+    if(card[1]===l) chain.unshift([card[0],card[1]]);
+    else chain.unshift([card[1],card[0]]);
+    player.splice(i,1); turn='ai'; update(); setTimeout(aiTurn,700); checkGame(); return;
+  }
+  if(card[0]===r||card[1]===r){
+    if(card[0]===r) chain.push([card[0],card[1]]);
+    else chain.push([card[1],card[0]]);
+    player.splice(i,1); turn='ai'; update(); setTimeout(aiTurn,700); checkGame(); return;
+  }
+};
+
+document.getElementById('draw').onclick=function(){
+  if(turn!=='player'||result) return;
+  drawUntilPlayable(player,'player');
+};
+
+function drawUntilPlayable(hand,who){
+  if(hand.some(canPlay) || stock.length===0){ // 有可出牌或沒牌了
+    update();
+    if(who==='player') {
+      if(!hand.some(canPlay)){
+        setTimeout(()=>{turn='ai'; update(); setTimeout(aiTurn,700);},700);
+      }
+    }
+    return;
+  }
+  // 抽一張
+  hand.push(stock.pop());
+  update();
+  setTimeout(()=>drawUntilPlayable(hand,who),350);
+}
+
+function aiTurn(){
+  // AI若能出則馬上出
+  let l=chain[0][0], r=chain[chain.length-1][1];
+  let opts=[];
+  for(let i=0;i<ai.length;i++) if(canPlay(ai[i])) opts.push(i);
+  if(opts.length){
+    let best=opts[0], bestScore=-1;
+    for(let idx of opts){
+      let [a,b]=ai[idx], cnt=0;
+      for(let t of ai) if(t[0]===a||t[1]===a||t[0]===b||t[1]===b) cnt++;
+      if(cnt>bestScore){best=idx;bestScore=cnt;}
+    }
+    let card=ai[best];
+    if(card[0]===l||card[1]===l){
+      if(card[1]===l) chain.unshift([card[0],card[1]]);
+      else chain.unshift([card[1],card[0]]);
+      ai.splice(best,1);
+      turn='player'; update(); checkGame(); return;
+    }
+    if(card[0]===r||card[1]===r){
+      if(card[0]===r) chain.push([card[0],card[1]]);
+      else chain.push([card[1],card[0]]);
+      ai.splice(best,1);
+      turn='player'; update(); checkGame(); return;
+    }
+  }else if(stock.length){
+    // AI抽到能出或沒牌
+    aiDrawUntilPlayable();
+  }else{
+    turn='player';update();checkGame();
+  }
+}
+function aiDrawUntilPlayable(){
+  if(ai.some(canPlay) || stock.length===0){
+    update();
+    if(ai.some(canPlay)){
+      setTimeout(aiTurn,700);
+    }else{
+      setTimeout(()=>{turn='player'; update();},600);
+    }
+    return;
+  }
+  ai.push(stock.pop());
+  update();
+  setTimeout(aiDrawUntilPlayable,350);
+}
+
+function checkGame(){
+  if(player.length===0){ result='你贏了！🎉'; }
+  else if(ai.length===0){ result='AI獲勝！😅'; }
+  else if(!player.some(canPlay) && !ai.some(canPlay) && stock.length===0){
+    let ps=player.flat().reduce((a,b)=>a+b,0), ais=ai.flat().reduce((a,b)=>a+b,0);
+    if(ps<ais) result='無法繼續，你以較少點數獲勝！'; 
+    else if(ais<ps) result='無法繼續，AI以較少點數勝！'; 
+    else result='平手！';
+  }
+  update();
+}
+</script>
+</body>
+</html>
